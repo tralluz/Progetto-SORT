@@ -6,7 +6,6 @@
 void task0()
 {
 	std::cout << "Sono il task n.0" << std::endl;
-	std::cout << "Commit";
 	busy_wait(90);
 }
 
