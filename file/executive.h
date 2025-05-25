@@ -39,7 +39,7 @@ class Executive
 	private:
 		struct task_data
 		{
-			std::function<void()> function;
+			std::function<void()> function; // funzione da eseguire al rilascio del task
 
 			std::thread thread;
 
