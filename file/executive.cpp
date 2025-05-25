@@ -78,7 +78,7 @@ void Executive::exec_function()
 	rt::affinity core0(1);
 	rt::this_thread::set_affinity(core0);
 	frame_id = 0;
-	auto next_frame_time=steady_clock::now();
+	auto next_frame_time = std::chrono::steady_clock::now();
 
 	while (true)
 	{
@@ -90,10 +90,9 @@ void Executive::exec_function()
 			auto &task = p_tasks[task_id];
 			std::unique_lock<std::mutex> lock(task.mtx);
 
-			if(!task.cv_done.wait_until(lock, steady_clock::now()+frame_length*unit_time, [&task] {return task.done;}))
+			if(!task.cv_done.wait_until(lock, std::chrono::steady_clock::now() + frame_length * unit_time, [&]() {return task.done;}))
 			{
                 std::cerr << "[DEADLINE MISS] Task " << task_id << std::endl;
-                // Qui puoi fare eventuale "recovery" come dice la traccia (es: abbassare priorità)
             }
 		}
 		  // 4. Attendi l'inizio del prossimo frame (sleep_until garantisce precisione)

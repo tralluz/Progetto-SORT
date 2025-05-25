@@ -54,6 +54,7 @@ class Executive
 			/* ... */
 		};
 		
+		size_t frame_id = 0; //aggiunta per prova compilazione
 		std::vector<task_data> p_tasks;
 		
 		std::thread exec_thread;
