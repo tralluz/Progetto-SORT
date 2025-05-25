@@ -43,6 +43,14 @@ class Executive
 
 			std::thread thread;
 
+			std::mutex mtx; // mutex per sincronizzare l'accesso alla funzione
+			std::condition_variable cv; // condition variable per svegliare i task
+
+			std::condition_variable cv_done; //condition variable per segnalare che ho finito
+
+			bool run = false; //flag il task deve partire?
+			bool done = false;//flag il task ha finito?			
+
 			/* ... */
 		};
 		
@@ -57,8 +65,7 @@ class Executive
 		
 		/* ... */
 		
-		static void task_function(task_data & task);
-		
+		static void task_function(task_data & task);		
 		void exec_function();
 };
 
