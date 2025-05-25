@@ -86,6 +86,14 @@ void Executive::exec_function()
 		std::cout << "*** Frame n." << frame_id << (frame_id == 0 ? " ******" : "") << std::endl;
 #endif
 		//Sveglia tutti i task del frame
+		 for (auto task_id : frames[frame_id]) {
+            auto &task = p_tasks[task_id];
+            std::unique_lock<std::mutex> lock(task.mtx);
+            task.run = true;
+            task.done = false;
+            task.cv.notify_one();
+        }
+		//attendi che task abbia finito
 		for(auto task_id : frames[frame_id]){
 			auto &task = p_tasks[task_id];
 			std::unique_lock<std::mutex> lock(task.mtx);
