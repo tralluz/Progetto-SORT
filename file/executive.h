@@ -39,11 +39,19 @@ class Executive
 	private:
 		struct task_data
 		{
-			std::function<void()> function;
+			std::function<void()> function; // funzione da eseguire al rilascio del task
 
-			std::thread thread;
+			std::thread thread; // thread associato al task
 
-			/* ... */
+			std::mutex mtx; // mutex per sincronizzare l'accesso alla funzione
+			std::condition_variable cv; // condition variable per svegliare i task
+
+			std::condition_variable cv_done; //condition variable per segnalare che ho finito
+
+			bool run =false; //flag il task deve partire?
+			bool done =false;//flag il task ha finito?
+
+			
 		};
 		
 		std::vector<task_data> p_tasks;
