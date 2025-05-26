@@ -12,11 +12,18 @@ Executive::Executive(size_t num_tasks, unsigned int frame_length, unsigned int u
 {
 }
 //prova commit
-void Executive::set_periodic_task(size_t task_id, std::function<void()> periodic_task, unsigned int /* wcet */)
+void Executive::set_periodic_task(size_t task_id, std::function<void()> periodic_task, unsigned int wcet)
 {
 	assert(task_id < p_tasks.size()); // Fallisce in caso di task_id non corretto (fuori range)
 	
 	p_tasks[task_id].function = periodic_task;
+	p_tasks[task_id].wcet = wcet;
+}
+
+void Executive::set_aperiodic_task(std::function<void()> aperiodic_task, unsigned int wcet)
+{
+ 	ap_task.function = aperiodic_task;
+ 	ap_task.wcet = wcet;
 }
 		
 void Executive::add_frame(std::vector<size_t> frame)
@@ -25,7 +32,6 @@ void Executive::add_frame(std::vector<size_t> frame)
 		assert(id < p_tasks.size()); // Fallisce in caso di task_id non corretto (fuori range)
 	
 	frames.push_back(frame);
-
 }
 
 void Executive::start()
@@ -37,6 +43,11 @@ void Executive::start()
 		p_tasks[id].thread = std::thread(&Executive::task_function, std::ref(p_tasks[id]));
 		 rt::set_affinity(p_tasks[id].thread, core0);
 	}
+
+	
+	assert(ap_task.function); // Fallisce se set_aperiodic_task() non e' stato invocato
+	
+	ap_task.thread = std::thread(&Executive::task_function, std::ref(ap_task));
 	
 	exec_thread = std::thread(&Executive::exec_function, this);
 	rt::set_affinity(exec_thread, core0);
@@ -45,9 +56,21 @@ void Executive::start()
 void Executive::wait()
 {
 	exec_thread.join();
+
+	ap_task.thread.join();
 	
 	for (auto & pt: p_tasks)
 		pt.thread.join();
+}
+
+void Executive::ap_task_request()
+{
+	 // Serve il lock per accedere in modo thread-safe
+    std::unique_lock<std::mutex> lock(ap_task.mtx);
+    ap_task.run = true;       // Imposto il flag che dice di partire
+    ap_task.done = false;    // Resetto il flag di terminazione
+    ap_task.cv.notify_one();  // Risveglio il thread del task aperiodico
+	/* ... */
 }
 
 /*Questa funzione è il corpo del thread associato a ogni task. 
