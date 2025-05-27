@@ -30,7 +30,8 @@ void task4(Executive & e)
 {
 	static unsigned count = 0;
 
-	std::cout << "Sono il task n.4" << std::endl;
+	 std::cout << "Sono il task n.4 (count=" << count+1 << ")" << std::endl; // +1 per chiarezza umana
+
 	
 	if (++count % 5 == 0)
 	{
@@ -50,9 +51,9 @@ void task5()
 
 void task_ap()
 {
-	std::cout << "Il task AP viene rilasciato" << std::endl;
-	busy_wait(42);
-	std::cout << "Il task AP ha terminato" << std::endl;
+ std::cout << "[APERIODICO] Il task AP viene rilasciato (SLACK STEALING!)" << std::endl;
+    busy_wait(42);
+    std::cout << "[APERIODICO] Il task AP ha terminato" << std::endl;
 }
 
 int main()

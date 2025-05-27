@@ -62,7 +62,7 @@ class Executive
 			bool run = false; //flag il task deve partire?
 			bool done = false;//flag il task ha finito?			
 
-			/* ... */
+			bool is_aperiodic = false;
 		};
 		
 		size_t frame_id = 0; //aggiunta per prova compilazione
