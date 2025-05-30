@@ -30,6 +30,7 @@ class Executive
 			std::condition_variable cv_done;
 			bool run = false;
 			bool done = false;
+			//bool ap_task_requested_this_frame = false; // Serve per bloccare richieste multiple nello stesso frame
 		};
 
 		size_t frame_id = 0;

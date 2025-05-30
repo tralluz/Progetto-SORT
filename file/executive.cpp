@@ -113,10 +113,21 @@ void Executive::exec_function()
 		for(auto task_id : frames[frame_id]){
 			auto &task = p_tasks[task_id];
 			std::unique_lock<std::mutex> lock(task.mtx);
+/* 
 			if(!task.cv_done.wait_until(lock, std::chrono::steady_clock::now() + frame_length * unit_time, [&]() {return task.done;}))
 			{
 				std::cerr << "[DEADLINE MISS] Task " << task_id << std::endl;
-			}
+			} */
+if(!task.cv_done.wait_until(lock, std::chrono::steady_clock::now() + frame_length * unit_time, [&]() {return task.done;}))
+{
+    std::cerr << "[DEADLINE MISS] Task " << task_id << std::endl;
+    try {
+        rt::set_priority(task.thread, rt::priority::rt_min);
+    } catch (const rt::permission_error& e) {
+        std::cerr << "[ERROR] Impossibile abbassare la priorità: " << e.what() << std::endl;
+    }
+}
+
 		}
 
 		if (ap_task_set) {
