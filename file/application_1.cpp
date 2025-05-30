@@ -31,6 +31,7 @@ void task4()
 	std::cout << "Sono il task n.4" << std::endl;
 	busy_wait(80);
 }
+
 void task_ap()
 {
 	std::cout << "Il task AP viene rilasciato" << std::endl;
