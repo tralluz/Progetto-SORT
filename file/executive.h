@@ -29,14 +29,14 @@ class Executive
 			std::condition_variable cv;
 			std::condition_variable cv_done;
 			bool run = false;
-			bool done = false;
-			//bool ap_task_requested_this_frame = false; // Serve per bloccare richieste multiple nello stesso frame
+			bool done = false;			
 		};
 
 		size_t frame_id = 0;
 		std::vector<task_data> p_tasks;
 		task_data ap_task;
 		bool ap_task_set = false;
+		bool ap_task_requested_this_frame = false; //serve per bloccare richieste multiple nello stesso frame
 		std::thread exec_thread;
 		std::vector< std::vector<size_t> > frames;
 		const unsigned int frame_length;

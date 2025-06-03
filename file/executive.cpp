@@ -65,15 +65,23 @@ void Executive::wait()
 
 void Executive::ap_task_request()
 {
-	if (!ap_task_set) return;
-	std::unique_lock<std::mutex> lock(ap_task.mtx);
-	if (ap_task.run) {
-		std::cerr << "[ERROR] Il task aperiodico è già in esecuzione" << std::endl;
-		return;
-	}
-	ap_task.run = true;
-	ap_task.done = false;
-	ap_task.cv.notify_one();
+	 std::unique_lock<std::mutex> lock(ap_task.mtx);
+    
+    if (ap_task_requested_this_frame) {
+        std::cerr << "[ERROR] Il task aperiodico è già stato richiesto in questo frame" << std::endl;
+        return;
+    }
+
+    if (ap_task.run) {
+        std::cerr << "[ERROR] Il task aperiodico è già in esecuzione" << std::endl;
+        return;
+    }
+
+    ap_task.run = true;
+    ap_task.done = false;
+    ap_task.cv.notify_one();
+    ap_task_requested_this_frame = true; //segna che in questo fram è già stato richiesto
+
 }
 
 void Executive::task_function(Executive::task_data & task)
@@ -113,11 +121,7 @@ void Executive::exec_function()
 		for(auto task_id : frames[frame_id]){
 			auto &task = p_tasks[task_id];
 			std::unique_lock<std::mutex> lock(task.mtx);
-/* 
-			if(!task.cv_done.wait_until(lock, std::chrono::steady_clock::now() + frame_length * unit_time, [&]() {return task.done;}))
-			{
-				std::cerr << "[DEADLINE MISS] Task " << task_id << std::endl;
-			} */
+
 if(!task.cv_done.wait_until(lock, std::chrono::steady_clock::now() + frame_length * unit_time, [&]() {return task.done;}))
 {
     std::cerr << "[DEADLINE MISS] Task " << task_id << std::endl;
@@ -127,9 +131,7 @@ if(!task.cv_done.wait_until(lock, std::chrono::steady_clock::now() + frame_lengt
         std::cerr << "[ERROR] Impossibile abbassare la priorità: " << e.what() << std::endl;
     }
 }
-
 		}
-
 		if (ap_task_set) {
 			std::unique_lock<std::mutex> lock(ap_task.mtx);
 			if (ap_task.run && !ap_task.done)
@@ -143,6 +145,7 @@ if(!task.cv_done.wait_until(lock, std::chrono::steady_clock::now() + frame_lengt
 
 		next_frame_time += frame_length * unit_time;
 		std::this_thread::sleep_until(next_frame_time);
+		ap_task_requested_this_frame = false;
 		frame_id = (frame_id + 1) % frames.size();
 	}
 }
