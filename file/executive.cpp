@@ -7,6 +7,10 @@
 #include "rt/affinity.h"
 #include "rt/priority.h"
 
+/* ------------------------------------------------------------------ */
+/*  Costruttore / setup                                               */
+/* ------------------------------------------------------------------ */
+
 Executive::Executive(size_t num_tasks, unsigned int frame_length, unsigned int unit_duration)
 	: p_tasks(num_tasks), frame_length(frame_length), unit_time(unit_duration)
 {
@@ -33,7 +37,9 @@ void Executive::add_frame(std::vector<size_t> frame)
 
 	frames.push_back(frame);
 }
-
+/* ------------------------------------------------------------------ */
+/*  Start / Wait                                                      */
+/* ------------------------------------------------------------------ */
 void Executive::start()
 {
 	rt::affinity core0(1);
@@ -51,6 +57,13 @@ void Executive::start()
 
 	exec_thread = std::thread(&Executive::exec_function, this);
 	rt::set_affinity(exec_thread, core0);
+	//aggiunto assegnazione massima di priorità all' executive
+	try {
+    	rt::set_priority(exec_thread, rt::priority::rt_max);
+		}	 
+	catch (const rt::permission_error& e) {
+    	std::cerr << "[ERROR] Impossibile impostare la priorità dell'executive: " << e.what() << std::endl;
+		}
 }
 
 void Executive::wait()
@@ -62,38 +75,46 @@ void Executive::wait()
 	for (auto & pt: p_tasks)
 		pt.thread.join();
 }
-
+/* ------------------------------------------------------------------ */
+/*  Richiesta asincrona AP task                                       */
+/* ------------------------------------------------------------------ */
 void Executive::ap_task_request()
 {
-	 std::unique_lock<std::mutex> lock(ap_task.mtx);
-    
-    if (ap_task_requested_this_frame) {
-        std::cerr << "[ERROR] Il task aperiodico è già stato richiesto in questo frame" << std::endl;
-        return;
-    }
+	//deposita solo il flag sotto mutex
+	std::lock_guard<std::mutex> lock(ap_task.mtx);
+    if (ap_task.state == TaskState::IDLE ||
+        ap_task.state == TaskState::DONE)
+        ap_task_requested_this_frame = true;
+    //Vecchio codice di ap_task_request
+	/* if (ap_task_requested_this_frame) {
+		std::cerr << "[ERROR] Il task aperiodico è già stato richiesto in questo frame" << std::endl;
+		return;
+	}
 
-    if (ap_task.run) {
-        std::cerr << "[ERROR] Il task aperiodico è già in esecuzione" << std::endl;
-        return;
-    }
+	if (ap_task.state == TaskState::READY || ap_task.state == TaskState::RUNNING) {
+		std::cerr << "[ERROR] Il task aperiodico è già in esecuzione o richiesto" << std::endl;
+		return;
+	} */
 
-    ap_task.run = true;
-    ap_task.done = false;
-    ap_task.cv.notify_one();
-    ap_task_requested_this_frame = true; //segna che in questo fram è già stato richiesto
-
+	/* ap_task.state = TaskState::READY;
+	ap_task.cv.notify_one(); */
+	
 }
-
+/* ------------------------------------------------------------------ */
+/*  Funzione dei singoli task                                         */
+/* ------------------------------------------------------------------ */
 void Executive::task_function(Executive::task_data & task)
 {
-	while(true) {
+	while (true) {
 		std::unique_lock<std::mutex> lock(task.mtx);
-		task.cv.wait(lock, [&task]() {return task.run;});
+		task.cv.wait(lock, [&task]() { return task.state == TaskState::READY; });
+		task.state = TaskState::RUNNING;
 		lock.unlock();
+
 		task.function();
+
 		lock.lock();
-		task.done = true;
-		task.run = false;
+		task.state = TaskState::DONE;
 		task.cv_done.notify_one();
 	}
 }
@@ -107,45 +128,115 @@ void Executive::exec_function()
 
 	while (true)
 	{
-#ifdef VERBOSE
+		#ifdef VERBOSE
 		std::cout << "*** Frame n." << frame_id << (frame_id == 0 ? " ******" : "") << std::endl;
-#endif
-		for (auto task_id : frames[frame_id]) {
-			auto &task = p_tasks[task_id];
-			std::unique_lock<std::mutex> lock(task.mtx);
-			task.run = true;
-			task.done = false;
-			task.cv.notify_one();
-		}
+		#endif
 
-		for(auto task_id : frames[frame_id]){
-			auto &task = p_tasks[task_id];
-			std::unique_lock<std::mutex> lock(task.mtx);
+	    /* ------------------------------------------------------------------
+         * 1) Legge e azzera la richiesta AP sotto mutex
+         * ------------------------------------------------------------------ */
+        bool req_this_frame;
+        {
+            std::lock_guard<std::mutex> lock(ap_task.mtx);
+            req_this_frame = ap_task_requested_this_frame;
+            ap_task_requested_this_frame = false;
+        }
 
-if(!task.cv_done.wait_until(lock, std::chrono::steady_clock::now() + frame_length * unit_time, [&]() {return task.done;}))
-{
-    std::cerr << "[DEADLINE MISS] Task " << task_id << std::endl;
-    try {
-        rt::set_priority(task.thread, rt::priority::rt_min);
-    } catch (const rt::permission_error& e) {
-        std::cerr << "[ERROR] Impossibile abbassare la priorità: " << e.what() << std::endl;
-    }
-}
-		}
-		if (ap_task_set) {
-			std::unique_lock<std::mutex> lock(ap_task.mtx);
-			if (ap_task.run && !ap_task.done)
-			{
-				ap_task.cv.notify_one();
-				if(!ap_task.cv_done.wait_until(lock, std::chrono::steady_clock::now() + frame_length * unit_time, [&]() { return ap_task.done; })) {
-					std::cerr << "[DEADLINE MISS] Task aperiodico" << std::endl;
+        /* ------------------------------------------------------------------
+         * 2) Gestione eventuale task aperiodico
+         * ------------------------------------------------------------------ */
+        if (req_this_frame) {
+            std::unique_lock<std::mutex> lock(ap_task.mtx);
+
+            if (ap_task.state == TaskState::READY ||
+                ap_task.state == TaskState::RUNNING)
+            {
+                std::cerr << "[DEADLINE MISS] AP task ancora in esecuzione "
+                             "al nuovo rilascio\n";
+                ap_task.state = TaskState::DONE;
+                try {
+                    rt::set_priority(ap_task.thread, rt::priority::rt_min);
+                } catch (const rt::permission_error& e) {
+                    std::cerr << "[ERROR] set_priority AP: "
+                              << e.what() << '\n';
+                }
+            } else {
+                ap_task.state = TaskState::READY;
+                ap_task.cv.notify_one();          // UNICO notify
+            }
+        }
+
+        /* ------------------------------------------------------------------
+         * 3) Rilascio dei task periodici del frame corrente
+         * ------------------------------------------------------------------ */
+        auto prio = rt::priority::rt_max - 1; // I task partono da priorità subito sotto l’executive
+		for (auto id : frames[frame_id]) {
+            auto& task = p_tasks[id];
+            std::unique_lock<std::mutex> lock(task.mtx);
+
+            if (task.state == TaskState::IDLE || task.state == TaskState::DONE)
+            {
+                task.state = TaskState::READY;
+
+				try {
+					rt::set_priority(task.thread, prio);
+				} catch (const rt::permission_error& e) {
+					std::cerr << "[ERROR] set_priority task " << id
+					<< ": " << e.what() << '\n';
 				}
-			}
-		}
+				
+				task.cv.notify_one();
+				prio--; //Il task successivo avrà priorità minore
+            } else {
+                std::cerr << "[WARN] Task " << id
+                          << " in stato " << static_cast<int>(task.state)
+                          << " al rilascio\n";
+            }
+        }
 
-		next_frame_time += frame_length * unit_time;
-		std::this_thread::sleep_until(next_frame_time);
-		ap_task_requested_this_frame = false;
-		frame_id = (frame_id + 1) % frames.size();
-	}
+        /* ------------------------------------------------------------------
+         * 4) Dorme fino all’inizio del prossimo frame 
+         * ------------------------------------------------------------------ */
+        next_frame_time += frame_length * unit_time;
+        std::this_thread::sleep_until(next_frame_time);
+
+        /* ------------------------------------------------------------------
+         * 5) Verifica deadline-miss di tutti i task del frame appena chiuso
+         * ------------------------------------------------------------------ */
+        for (auto id : frames[frame_id]) {
+            auto& task = p_tasks[id];
+            std::lock_guard<std::mutex> lock(task.mtx);
+
+            if (task.state != TaskState::DONE) {
+                std::cerr << "[DEADLINE MISS] Task " << id << '\n';
+                try {
+                    rt::set_priority(task.thread, rt::priority::rt_min);
+                } catch (const rt::permission_error& e) {
+                    std::cerr << "[ERROR] set_priority task " << id
+                              << ": " << e.what() << '\n';
+                }
+                task.state = TaskState::DONE;
+            }
+        }
+
+        if (ap_task_set) {
+            std::lock_guard<std::mutex> lock(ap_task.mtx);
+            if (ap_task.state == TaskState::READY ||
+                ap_task.state == TaskState::RUNNING)
+            {
+                std::cerr << "[DEADLINE MISS] Task aperiodico\n";
+                try {
+                    rt::set_priority(ap_task.thread, rt::priority::rt_min);
+                } catch (const rt::permission_error& e) {
+                    std::cerr << "[ERROR] set_priority AP: "<< e.what() << '\n';
+                }
+                ap_task.state = TaskState::DONE;
+            }
+        }
+
+        /* ------------------------------------------------------------------
+         * 6) Passa al frame successivo
+         * ------------------------------------------------------------------ */
+        frame_id = (frame_id + 1) % frames.size();
+    }
 }

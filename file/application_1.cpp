@@ -32,26 +32,26 @@ void task4()
 	busy_wait(80);
 }
 
-void task_ap()
+/* void task_ap()
 {
 	std::cout << "Il task AP viene rilasciato" << std::endl;
 	busy_wait(42);
 	std::cout << "Il task AP ha terminato" << std::endl;
-}
+} */
 
 
 int main()
 {
 	busy_wait_init();
 
-	Executive exec(5, 4, 100);
+	Executive exec(5, 4, 400);
 
 	exec.set_periodic_task(0, task0, 1); // tau_1
 	exec.set_periodic_task(1, task1, 2); // tau_2
 	exec.set_periodic_task(2, task2, 1); // tau_3,1
 	exec.set_periodic_task(3, task3, 3); // tau_3,2
 	exec.set_periodic_task(4, task4, 1); // tau_3,3
-	exec.set_aperiodic_task(task_ap, 2);
+	//exec.set_aperiodic_task(task_ap, 2);
 	
 	exec.add_frame({0,1,2});
 	exec.add_frame({0,3});
